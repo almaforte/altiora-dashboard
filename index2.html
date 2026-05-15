@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Altiora — Analytics</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<script src="https://unpkg.com/recharts@2.10.0/umd/Recharts.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+html,body{margin:0;padding:0;background:#0c0b09;}
+*{box-sizing:border-box;}
+::-webkit-scrollbar{width:4px;}
+::-webkit-scrollbar-thumb{background:#272220;}
+input,select,textarea,button{font-family:'DM Sans',system-ui,sans-serif;}
+button:hover{opacity:.82!important;}
+textarea{resize:vertical;}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect } = React;
+const { BarChart, Bar, AreaChart, Area, XAxis, YAxis, CartesianGrid,
+        Tooltip, Legend, ResponsiveContainer } = Recharts;
+
+// localStorage wrapper — sincrono, compatibile con le chiamate del dashboard
+const storage = {
+  get: (key) => { const v = localStorage.getItem("altiora_"+key); return v ? {value:v} : null; },
+  set: (key, val) => { localStorage.setItem("altiora_"+key, val); return {key,value:val}; },
+};
+
+import {
+  BarChart, Bar, AreaChart, Area,
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
+} from "recharts";
+
+const P = {
+  bg: "#0c0b09", card: "#141210", border: "#272220",
+  gold: "#c9a55a", goldDim: "#7a6035", goldFaint: "#1e1a12",
+  cream: "#f0ead6", creamDim: "#8a7e68", creamFaint: "#3a342a",
+  green: "#7ac9a0", red: "#c97a7a",
+};
+
+const MONTHS = ["Gen","Feb","Mar","Apr","Mag","Giu","Lug","Ago","Set","Ott","Nov","Dic"];
+const MONTHS_FULL = ["Gennaio","Febbraio","Marzo","Aprile","Maggio","Giugno",
+  "Luglio","Agosto","Settembre","Ottobre","Novembre","Dicembre"];
+
+// ── Sorgente dati: GitHub Gist (aggiornato automaticamente dal GAS ogni 1° del mese) ──
+const GIST_URL = "https://gist.githubusercontent.com/almaforte/806fbd76688be1a8699cad38b89f0af9/raw/altiora-data.json";
+
+// Dati locali di riserva (usati se la connessione al Sheet fallisce)
+const SAMPLE_FALLBACK = {
+  2025:[
+    {m:0,av:31,oc:0,rev:0,amf:0,vania:0},
+    {m:1,av:28,oc:0,rev:0,amf:0,vania:0},
+    {m:2,av:31,oc:2,rev:95,amf:0,vania:40},
+    {m:3,av:30,oc:4,rev:1930,amf:799,vania:141},
+    {m:4,av:31,oc:24,rev:8287,amf:3726,vania:657},
+    {m:5,av:30,oc:26,rev:10343,amf:4380,vania:835},
+    {m:6,av:31,oc:26,rev:6575,amf:3089,vania:545},
+    {m:7,av:31,oc:20,rev:5761,amf:2541,vania:448},
+    {m:8,av:30,oc:26,rev:8940,amf:4251,vania:750},
+    {m:9,av:31,oc:21,rev:6846,amf:2993,vania:587},
+    {m:10,av:30,oc:5,rev:2201,amf:1110,vania:196},
+    {m:11,av:31,oc:23,rev:7370,amf:3112,vania:549},
+  ],
+  2026:[
+    {m:0,av:31,oc:7,rev:1210,amf:471,vania:83},
+    {m:1,av:28,oc:16,rev:4691,amf:2059,vania:363},
+    {m:2,av:31,oc:20,rev:6290,amf:2270,vania:522},
+    {m:3,av:30,oc:23,rev:8728,amf:3819,vania:761},
+    {m:4,av:31,oc:29,rev:11271,amf:5320,vania:1010},
+    {m:5,av:30,oc:24,rev:6976,amf:3039,vania:536},
+    {m:6,av:31,oc:16,rev:5376,amf:2546,vania:494},
+    {m:7,av:31,oc:16,rev:6657,amf:2886,vania:509},
+    {m:8,av:30,oc:17,rev:5618,amf:2452,vania:433},
+    {m:9,av:31,oc:23,rev:7249,amf:3415,vania:647},
+    {m:10,av:30,oc:1,rev:0,amf:0,vania:0},
+    {m:11,av:31,oc:0,rev:0,amf:0,vania:0},
+  ],
+};
+
+function metrics(data = []) {
+  const av    = data.reduce((s, d) => s + (d.av||0), 0);
+  const oc    = data.reduce((s, d) => s + (d.oc||0), 0);
+  const rev   = data.reduce((s, d) => s + (d.rev||0), 0);
+  const amf   = data.reduce((s, d) => s + (d.amf||0), 0);
+  const vania = data.reduce((s, d) => s + (d.vania||0), 0);
+  return {
+    occ: av ? Math.round((oc/av)*100) : 0,
+    adr: oc ? Math.round(rev/oc) : 0,
+    revpar: av ? Math.round(rev/av) : 0,
+    totalRev: rev, nights: oc, totalAmf: amf, totalVania: vania,
+  };
+}
+
+async function askClaude(messages, useWebSearch = false) {
+  const apiKey = localStorage.getItem("altiora_apikey")||"";
+  const body = {
+    model: "claude-sonnet-4-20250514",
+    max_tokens: 1000,
+    messages,
+  };
+  if (useWebSearch) body.tools = [{ type: "web_search_20250305", name: "web_search" }];
+  const r = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
+    body: JSON.stringify(body),
+  });
+  const d = await r.json();
+  return (d.content||[]).filter(b => b.type==="text").map(b=>b.text).join("\n");
+}
+
+// ── Styled helpers ──
+const S = {
+  card: { background: P.card, border: `1px solid ${P.border}`, borderRadius: 3 },
+  btn: (ghost) => ({
+    background: ghost ? "transparent" : P.gold,
+    color: ghost ? P.gold : P.bg,
+    border: `1px solid ${P.gold}`,
+    padding: "9px 22px", fontSize: 11, letterSpacing: "2px",
+    textTransform: "uppercase", cursor: "pointer", fontWeight: 600,
+    opacity: 1, transition: "opacity .2s",
+  }),
+  label: { fontSize: 10, letterSpacing: "2px", textTransform: "uppercase",
+    color: P.creamDim, display: "block", marginBottom: 6 },
+  input: { background: "#1a1712", border: `1px solid ${P.border}`,
+    color: P.cream, padding: "9px 12px", fontSize: 13, width: "100%",
+    outline: "none", borderRadius: 2 },
+  select: { background: "#1a1712", border: `1px solid ${P.border}`,
+    color: P.cream, padding: "7px 11px", fontSize: 12, borderRadius: 2 },
+};
+
+function Tip({ active, payload, label }) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div style={{...S.card, padding:"12px 16px", minWidth:160}}>
+      <div style={{color:P.gold,fontSize:11,marginBottom:6,letterSpacing:"1px"}}>{label}</div>
+      {payload.map((p,i)=>(
+        <div key={i} style={{fontSize:12,color:p.color||P.cream,marginBottom:2}}>
+          {p.name}: {p.name.toLowerCase().includes("ricavi")||p.name.toLowerCase().includes("rev")
+            ? `€${Number(p.value).toLocaleString("it-IT")}` : `${p.value}%`}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AltioraAnalytics() {
+  const [tab, setTab] = useState("mensile");
+  const [data, setData] = useState(SAMPLE_FALLBACK);
+  const [dataStatus, setDataStatus] = useState("loading"); // "loading" | "live" | "fallback"
+  const [selYear, setSelYear] = useState(2026);
+  const [cmpYear, setCmpYear] = useState(2025);
+  const [reports, setReports] = useState({});
+  const [propInput, setPropInput] = useState({ address:"", price:"", surface:"", notes:"" });
+  const [loading, setLoading] = useState({});
+
+  const [importOpen, setImportOpen] = useState(false);
+  const [importText, setImportText] = useState("");
+  const [importError, setImportError] = useState("");
+
+  const importaDati = async () => {
+    try {
+      const json = JSON.parse(importText.trim());
+      if (Object.keys(json).length === 0) throw new Error("Oggetto vuoto");
+      const parsed = {};
+      Object.keys(json).forEach(k => { parsed[Number(k)] = json[k]; });
+      setData(parsed);
+      const anni = Object.keys(parsed).map(Number).sort((a,b)=>b-a);
+      if (anni.length) setSelYear(anni[0]);
+      const ts = new Date().toLocaleDateString("it-IT");
+      setDataStatus("live:" + ts);
+      try { storage.set("altiora-data", JSON.stringify({data: parsed, ts})); } catch {}
+      setImportOpen(false);
+      setImportText("");
+      setImportError("");
+    } catch {
+      setImportError("JSON non valido — incolla il blocco dall'email del report.");
+    }
+  };
+
+  // Al mount: carica da storage persistente
+  useEffect(() => {
+    (async () => {
+      try {
+        const cached = storage.get("altiora-data");
+        if (cached) {
+          const {data: d, ts} = JSON.parse(cached.value);
+          const parsed = {};
+          Object.keys(d).forEach(k => { parsed[Number(k)] = d[k]; });
+          setData(parsed);
+          const anni = Object.keys(parsed).map(Number).sort((a,b)=>b-a);
+          if (anni.length) setSelYear(anni[0]);
+          setDataStatus("cached:" + ts);
+        } else {
+          setDataStatus("local");
+        }
+      } catch { setDataStatus("local"); }
+    })();
+  }, []);
+
+  // Confronto automatico con l'anno precedente — sovrascrivibile manualmente
+  useEffect(() => { setCmpYear(selYear - 1); }, [selYear]);
+
+  const years = Object.keys(data).map(Number).sort((a,b)=>b-a);
+  const curData = data[selYear] || [];
+  const cmpData = data[cmpYear] || [];
+  const curM = metrics(curData);
+  const cmpM = metrics(cmpData);
+
+  const quarters = [0,1,2,3].map(q=>{
+    const ms=[q*3,q*3+1,q*3+2];
+    const cm=metrics(curData.filter(d=>ms.includes(d.m)));
+    const km=metrics(cmpData.filter(d=>ms.includes(d.m)));
+    return {
+      q:`Q${q+1}`,
+      [`Occ ${selYear}`]: cm.occ,
+      [`Occ ${cmpYear}`]: km.occ,
+      [`Ricavi ${selYear}`]: cm.totalRev,
+      [`Ricavi ${cmpYear}`]: km.totalRev,
+      _cm: cm, _km: km,
+    };
+  });
+
+  const delta = (cur, cmp) => {
+    if (!cmp) return { pct: 0, pp: 0 };
+    return {
+      pct: Math.round(((cur-cmp)/cmp)*100),
+      pp: Math.round(cur-cmp),
+    };
+  };
+
+  const generate = async (key, prompt, web=false) => {
+    setLoading(l=>({...l,[key]:true}));
+    try {
+      const r = await askClaude([{role:"user",content:prompt}], web);
+      setReports(rp=>({...rp,[key]:r}));
+    } catch { setReports(rp=>({...rp,[key]:"Errore. Riprova."})); }
+    setLoading(l=>({...l,[key]:false}));
+  };
+
+  const monthlyPrompt = () => {
+    const detail = curData.map(d=>{
+      const occ=d.av?Math.round((d.oc/d.av)*100):0;
+      const adr=d.oc?Math.round(d.rev/d.oc):0;
+      return `${MONTHS_FULL[d.m]}: occupancy ${occ}%, ADR €${adr}, ricavi €${d.rev}`;
+    }).join("\n");
+    return `Sei l'analista di Altiora, loft di lusso a Trastevere, Roma.
+
+Anno ${selYear}: occupancy ${curM.occ}%, ADR €${curM.adr}, RevPAR €${curM.revpar}, ricavi totali €${curM.totalRev.toLocaleString("it-IT")}, notti vendute ${curM.nights}
+Anno ${cmpYear}: occupancy ${cmpM.occ}%, ADR €${cmpM.adr}, RevPAR €${cmpM.revpar}, ricavi totali €${cmpM.totalRev.toLocaleString("it-IT")}
+
+Dettaglio mensile ${selYear}:
+${detail}
+
+Scrivi un'analisi professionale in italiano di circa 220 parole. Identifica mesi forti e deboli, tendenze chiave, confronto con ${cmpYear}, e 2-3 raccomandazioni operative concrete e specifiche. Stile diretto e preciso, senza tirets, con veri ritorni a capo tra i paragrafi. Nessuna frase di cortesia.`;
+  };
+
+  const marketPrompt = `Fai una ricerca aggiornata (2025) sul mercato degli affitti brevi di lusso a Trastevere, Roma. Cerca prezzi medi per notte, tasso di occupazione medio, stagionalità, dinamiche competitive su Airbnb e Booking, trend del mercato romano.
+
+Scrivi un report in italiano di circa 250 parole strutturato così: situazione attuale del mercato, prezzi di riferimento per un loft di lusso, mesi di picco e bassa stagione, raccomandazioni di pricing e posizionamento competitivo per un loft premium. Stile diretto, senza tirets, veri ritorni a capo tra i paragrafi. Nessuna frase di cortesia.`;
+
+  const propPrompt = `Sei un analista immobiliare specializzato in affitti brevi di lusso a Roma.
+
+Immobile da valutare:
+Indirizzo/zona: ${propInput.address||"Trastevere o zone limitrofe, Roma"}
+Prezzo richiesto: €${propInput.price||"non specificato"}
+Superficie: ${propInput.surface||"non specificata"} mq
+Note: ${propInput.notes||"nessuna"}
+
+Benchmark Altiora (loft di lusso, Trastevere):
+ADR medio annuo €${curM.adr} | RevPAR €${curM.revpar} | Occupancy ${curM.occ}% | Ricavi annui €${curM.totalRev.toLocaleString("it-IT")}
+
+Framework di valutazione:
+Rendimento lordo target minimo 8% | Superficie netta 85% | Priorità: buy-renovate-resell o rendita pura | Benchmark: Trastevere, Prati, Pigneto
+
+Scrivi una valutazione di investimento in italiano di circa 200 parole. Include: stima rendimento lordo e netto, potenziale ADR comparabile ad Altiora, rischi principali, opportunità, e una raccomandazione finale esplicita (acquista / non acquista / negozia a €X). Stile diretto e preciso, senza tirets, veri ritorni a capo. Nessuna frase di cortesia.`;
+
+  // ── TABS nav ──
+  const tabs = [["mensile","Mensile"],["trimestrale","Trimestrale"],["mercato","Mercato"],["opportunita","Opportunità"]];
+
+  // ── KPI row 1: performance ──
+  const kpisPerf = [
+    { label:"Occupancy", sub:"% notti occupate sul totale disponibile", cur:`${curM.occ}%`, d:delta(curM.occ, cmpM.occ).pct, unit:"%" },
+    { label:"ADR", sub:"Tariffa media per notte venduta", cur:`€${curM.adr}`, d:delta(curM.adr, cmpM.adr).pct, unit:"%" },
+    { label:"RevPAR", sub:"Ricavo per notte disponibile", cur:`€${curM.revpar}`, d:delta(curM.revpar, cmpM.revpar).pct, unit:"%" },
+    { label:"Notti vendute", sub:"Notti fisicamente occupate nell'anno", cur:curM.nights, d:delta(curM.nights, cmpM.nights).pct, unit:"%" },
+  ];
+
+  // ── KPI row 2: financial ──
+  const kpisFinanz = [
+    { label:"Ricavi Altiora", sub:"Ricavo lordo annuo (netto OTA, ante spese)", cur:`€${curM.totalRev.toLocaleString("it-IT")}`, d:delta(curM.totalRev, cmpM.totalRev).pct, unit:"%" },
+    { label:"Netto AMF", sub:"Quota netta al proprietario post tutte le spese", cur:`€${curM.totalAmf.toLocaleString("it-IT")}`, d:delta(curM.totalAmf, cmpM.totalAmf).pct, unit:"%" },
+    { label:"Ricavi Vania", sub:"Compenso pulizie annuo (fisso + bonus)", cur:`€${curM.totalVania.toLocaleString("it-IT")}`, d:delta(curM.totalVania, cmpM.totalVania).pct, unit:"%" },
+  ];
+
+  // ── dati grafici mensili (aggiunto AMF e Vania) ──
+  const monthChart = MONTHS.map((m,i)=>{
+    const c = curData.find(d=>d.m===i)||{};
+    const k = cmpData.find(d=>d.m===i)||{};
+    return {
+      month: m,
+      [`Occ ${selYear}`]: c.av ? Math.round((c.oc/c.av)*100) : 0,
+      [`Occ ${cmpYear}`]: k.av ? Math.round((k.oc/k.av)*100) : 0,
+      [`Ricavi ${selYear}`]: c.rev||0,
+      [`Ricavi ${cmpYear}`]: k.rev||0,
+      [`AMF ${selYear}`]: c.amf||0,
+      [`AMF ${cmpYear}`]: k.amf||0,
+      [`Vania ${selYear}`]: c.vania||0,
+      [`Vania ${cmpYear}`]: k.vania||0,
+    };
+  });
+
+  return (
+    <div style={{ background:P.bg, minHeight:"100vh", color:P.cream,
+      fontFamily:"'DM Sans', system-ui, sans-serif" }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300&family=DM+Sans:wght@300;400;500;600&display=swap');
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        ::-webkit-scrollbar { width:4px } ::-webkit-scrollbar-thumb { background:${P.border} }
+        input, select, textarea { font-family: inherit; }
+        button:hover { opacity: .82 !important; }
+        textarea { resize: vertical; }
+      `}</style>
+
+      {/* ── HEADER ── */}
+      <div style={{ borderBottom:`1px solid ${P.border}`, padding:"20px 32px",
+        display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+        <div>
+          <div style={{ fontFamily:"'Cormorant Garamond', serif", fontSize:30,
+            fontWeight:300, letterSpacing:"7px", color:P.gold, lineHeight:1 }}>
+            ALTIORA
+          </div>
+          <div style={{ fontSize:10, letterSpacing:"3px", color:P.creamDim, marginTop:4 }}>
+            TRASTEVERE · ROMA · ANALYTICS PLATFORM
+          </div>
+          <div style={{ marginTop:6, fontSize:10, letterSpacing:"1px",
+            color: dataStatus.startsWith("live") ? P.green
+                 : dataStatus.startsWith("cached") ? P.gold : P.creamDim }}>
+            {dataStatus.startsWith("live") ? `● Live — aggiornato ${dataStatus.split(":")[1]}`
+           : dataStatus.startsWith("cached") ? `● Cache — ${dataStatus.split(":")[1]}`
+           : loading.data ? "○ Aggiornamento in corso…"
+           : "● Dati locali"}
+          </div>
+        </div>
+        <div style={{ display:"flex", gap:16, alignItems:"flex-end" }}>
+          <div>
+            <div style={{ fontSize:10, color:P.creamDim, letterSpacing:"1px", marginBottom:4 }}>
+              ANNO PRINCIPALE
+            </div>
+            <select value={selYear} onChange={e=>setSelYear(Number(e.target.value))} style={S.select}>
+              {years.map(y=><option key={y} value={y}>{y}</option>)}
+            </select>
+          </div>
+          <div>
+            <div style={{ fontSize:10, color:P.creamDim, letterSpacing:"1px", marginBottom:4 }}>
+              CONFRONTO
+            </div>
+            <select value={cmpYear} onChange={e=>setCmpYear(Number(e.target.value))} style={S.select}>
+              {years.map(y=><option key={y} value={y}>{y}</option>)}
+            </select>
+          </div>
+          <button onClick={()=>setImportOpen(o=>!o)}
+            style={{...S.btn(true), padding:"7px 16px", fontSize:10, alignSelf:"flex-end"}}>
+            ⊕ Importa dati
+          </button>
+        </div>
+      </div>
+
+      {/* ── PANNELLO IMPORTAZIONE DATI ── */}
+      {importOpen && (
+        <div style={{ background:"#0e0c0a", borderBottom:`1px solid ${P.border}`,
+          padding:"20px 32px" }}>
+          <div style={{ maxWidth:700 }}>
+            <div style={{ fontSize:11, color:P.gold, letterSpacing:"1px", marginBottom:8 }}>
+              IMPORTA DATI DAL REPORT EMAIL
+            </div>
+            <div style={{ fontSize:12, color:P.creamDim, marginBottom:12, lineHeight:"1.6" }}>
+              Copia il blocco JSON dall'email del report mensile e incollalo qui.
+            </div>
+            <textarea
+              value={importText}
+              onChange={e=>{ setImportText(e.target.value); setImportError(""); }}
+              placeholder={'{"2025": [...], "2026": [...]}'}
+              style={{ ...S.input, height:100, fontFamily:"monospace", fontSize:11 }}
+            />
+            {importError && (
+              <div style={{ fontSize:11, color:P.red, marginTop:6 }}>{importError}</div>
+            )}
+            <div style={{ display:"flex", gap:10, marginTop:12 }}>
+              <button onClick={importaDati}
+                style={{...S.btn(false), padding:"8px 20px"}}>
+                Salva e applica
+              </button>
+              <button onClick={()=>{ setImportOpen(false); setImportError(""); }}
+                style={{...S.btn(true), padding:"8px 20px"}}>
+                Annulla
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── TABS ── */}
+      <div style={{ borderBottom:`1px solid ${P.border}`, display:"flex",
+        padding:"0 32px", gap:4 }}>
+        {tabs.map(([id,label])=>(
+          <button key={id} onClick={()=>setTab(id)} style={{
+            background:"none", border:"none", cursor:"pointer",
+            padding:"12px 18px", fontSize:11, letterSpacing:"2px",
+            textTransform:"uppercase", fontWeight:500,
+            color: tab===id ? P.gold : P.creamDim,
+            borderBottom: tab===id ? `2px solid ${P.gold}` : "2px solid transparent",
+            transition:"all .2s",
+          }}>{label}</button>
+        ))}
+      </div>
+
+      <div style={{ padding:"28px 32px", maxWidth:1080, margin:"0 auto" }}>
+
+        {/* ── KPI STRIP 2 righe ── */}
+        {(tab==="mensile"||tab==="trimestrale") && (
+          <div style={{ display:"flex", flexDirection:"column", gap:10, marginBottom:28 }}>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:12 }}>
+              {kpisPerf.map(({ label, sub, cur, d, unit })=>(
+                <div key={label} style={{ ...S.card, padding:"18px 16px" }}>
+                  <div style={{ fontSize:10, letterSpacing:"2px", color:P.creamDim, textTransform:"uppercase", marginBottom:4 }}>{label}</div>
+                  <div style={{ fontSize:10, color:P.creamFaint, marginBottom:8, lineHeight:"1.4" }}>{sub}</div>
+                  <div style={{ fontFamily:"'Cormorant Garamond', serif", fontSize:24, color:P.gold, fontWeight:400 }}>{cur}</div>
+                  <div style={{ fontSize:11, color: d>=0 ? P.green : P.red, marginTop:5 }}>
+                    {d>=0 ? "↑" : "↓"} {Math.abs(d)}{unit} vs {cmpYear}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12 }}>
+              {kpisFinanz.map(({ label, sub, cur, d, unit })=>(
+                <div key={label} style={{ ...S.card, padding:"18px 16px" }}>
+                  <div style={{ fontSize:10, letterSpacing:"2px", color:P.creamDim, textTransform:"uppercase", marginBottom:4 }}>{label}</div>
+                  <div style={{ fontSize:10, color:P.creamFaint, marginBottom:8, lineHeight:"1.4" }}>{sub}</div>
+                  <div style={{ fontFamily:"'Cormorant Garamond', serif", fontSize:24, color:P.gold, fontWeight:400 }}>{cur}</div>
+                  <div style={{ fontSize:11, color: d>=0 ? P.green : P.red, marginTop:5 }}>
+                    {d>=0 ? "↑" : "↓"} {Math.abs(d)}{unit} vs {cmpYear}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ════════════ MENSILE ════════════ */}
+        {tab==="mensile" && (
+          <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20 }}>
+
+              {/* Occupancy */}
+              <div style={{...S.card, padding:"20px 16px 16px 16px"}}>
+                <div style={{ fontSize:10, letterSpacing:"2px", color:P.creamDim, marginBottom:14 }}>
+                  OCCUPANCY MENSILE — {selYear} vs {cmpYear}
+                </div>
+                <ResponsiveContainer width="100%" height={210}>
+                  <BarChart data={monthChart} margin={{top:0,right:0,left:-22,bottom:0}}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={P.border} />
+                    <XAxis dataKey="month" tick={{fill:P.creamDim,fontSize:10}} />
+                    <YAxis tick={{fill:P.creamDim,fontSize:10}} domain={[0,100]} unit="%" />
+                    <Tooltip content={<Tip/>} />
+                    <Legend wrapperStyle={{fontSize:10,color:P.creamDim}} />
+                    <Bar dataKey={`Occ ${selYear}`} fill={P.gold} radius={[2,2,0,0]} />
+                    <Bar dataKey={`Occ ${cmpYear}`} fill={P.goldDim} radius={[2,2,0,0]} opacity={0.55} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* Ricavi */}
+              <div style={{...S.card, padding:"20px 16px 16px 16px"}}>
+                <div style={{ fontSize:10, letterSpacing:"2px", color:P.creamDim, marginBottom:14 }}>
+                  RICAVI ALTIORA MENSILI — {selYear} vs {cmpYear}
+                </div>
+                <ResponsiveContainer width="100%" height={210}>
+                  <AreaChart data={monthChart} margin={{top:0,right:0,left:-10,bottom:0}}>
+                    <defs>
+                      <linearGradient id="ga" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="10%" stopColor={P.gold} stopOpacity={0.28}/>
+                        <stop offset="95%" stopColor={P.gold} stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke={P.border} />
+                    <XAxis dataKey="month" tick={{fill:P.creamDim,fontSize:10}} />
+                    <YAxis tick={{fill:P.creamDim,fontSize:10}} />
+                    <Tooltip content={<Tip/>} />
+                    <Legend wrapperStyle={{fontSize:10}} />
+                    <Area type="monotone" dataKey={`Ricavi ${selYear}`} stroke={P.gold} fill="url(#ga)" strokeWidth={2} />
+                    <Area type="monotone" dataKey={`Ricavi ${cmpYear}`} stroke={P.goldDim} fill="none" strokeWidth={1.5} strokeDasharray="5 4" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* AMF mensile */}
+              <div style={{...S.card, padding:"20px 16px 16px 16px"}}>
+                <div style={{ fontSize:10, letterSpacing:"2px", color:P.creamDim, marginBottom:14 }}>
+                  NETTO AMF MENSILE — {selYear} vs {cmpYear}
+                </div>
+                <ResponsiveContainer width="100%" height={210}>
+                  <AreaChart data={monthChart} margin={{top:0,right:0,left:-10,bottom:0}}>
+                    <defs>
+                      <linearGradient id="gb" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="10%" stopColor={P.green} stopOpacity={0.22}/>
+                        <stop offset="95%" stopColor={P.green} stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke={P.border} />
+                    <XAxis dataKey="month" tick={{fill:P.creamDim,fontSize:10}} />
+                    <YAxis tick={{fill:P.creamDim,fontSize:10}} />
+                    <Tooltip content={<Tip/>} />
+                    <Legend wrapperStyle={{fontSize:10}} />
+                    <Area type="monotone" dataKey={`AMF ${selYear}`} stroke={P.green} fill="url(#gb)" strokeWidth={2} />
+                    <Area type="monotone" dataKey={`AMF ${cmpYear}`} stroke="#4a8a6a" fill="none" strokeWidth={1.5} strokeDasharray="5 4" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* Vania mensile */}
+              <div style={{...S.card, padding:"20px 16px 16px 16px"}}>
+                <div style={{ fontSize:10, letterSpacing:"2px", color:P.creamDim, marginBottom:14 }}>
+                  RICAVI VANIA MENSILI — {selYear} vs {cmpYear}
+                </div>
+                <ResponsiveContainer width="100%" height={210}>
+                  <BarChart data={monthChart} margin={{top:0,right:0,left:-22,bottom:0}}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={P.border} />
+                    <XAxis dataKey="month" tick={{fill:P.creamDim,fontSize:10}} />
+                    <YAxis tick={{fill:P.creamDim,fontSize:10}} />
+                    <Tooltip content={<Tip/>} />
+                    <Legend wrapperStyle={{fontSize:10}} />
+                    <Bar dataKey={`Vania ${selYear}`} fill="#9a7ac9" radius={[2,2,0,0]} />
+                    <Bar dataKey={`Vania ${cmpYear}`} fill="#6a4a99" radius={[2,2,0,0]} opacity={0.55} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            {/* Monthly AI analysis */}
+            <div style={S.card}>
+              <div style={{ padding:"16px 20px", borderBottom:`1px solid ${P.border}`,
+                display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                <div style={{ fontSize:10, letterSpacing:"2px", color:P.creamDim }}>
+                  ANALISI INTELLIGENTE {selYear}
+                </div>
+                <button onClick={()=>generate("monthly", monthlyPrompt())}
+                  disabled={loading.monthly} style={S.btn(false)}>
+                  {loading.monthly ? "Analisi in corso…" : "Genera Analisi"}
+                </button>
+              </div>
+              <div style={{ padding:"20px", minHeight:80 }}>
+                {reports.monthly
+                  ? <div style={{ fontSize:14, lineHeight:"1.85", whiteSpace:"pre-line" }}>
+                      {reports.monthly}
+                    </div>
+                  : <div style={{ color:P.creamDim, fontSize:13 }}>
+                      Clicca "Genera Analisi" per ottenere un'analisi narrativa intelligente
+                      con confronto {selYear}/{cmpYear} e raccomandazioni operative.
+                    </div>
+                }
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ════════════ TRIMESTRALE ════════════ */}
+        {tab==="trimestrale" && (
+          <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20 }}>
+              <div style={{...S.card, padding:"20px 16px 16px"}}>
+                <div style={{ fontSize:10, letterSpacing:"2px", color:P.creamDim, marginBottom:14 }}>
+                  OCCUPANCY PER TRIMESTRE
+                </div>
+                <ResponsiveContainer width="100%" height={230}>
+                  <BarChart data={quarters} margin={{top:0,right:0,left:-22,bottom:0}}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={P.border} />
+                    <XAxis dataKey="q" tick={{fill:P.creamDim,fontSize:12}} />
+                    <YAxis tick={{fill:P.creamDim,fontSize:10}} unit="%" domain={[0,100]} />
+                    <Tooltip content={<Tip/>} />
+                    <Legend wrapperStyle={{fontSize:10}} />
+                    <Bar dataKey={`Occ ${selYear}`} fill={P.gold} radius={[3,3,0,0]} />
+                    <Bar dataKey={`Occ ${cmpYear}`} fill={P.goldDim} radius={[3,3,0,0]} opacity={0.55} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+              <div style={{...S.card, padding:"20px 16px 16px"}}>
+                <div style={{ fontSize:10, letterSpacing:"2px", color:P.creamDim, marginBottom:14 }}>
+                  RICAVI PER TRIMESTRE
+                </div>
+                <ResponsiveContainer width="100%" height={230}>
+                  <BarChart data={quarters} margin={{top:0,right:0,left:-10,bottom:0}}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={P.border} />
+                    <XAxis dataKey="q" tick={{fill:P.creamDim,fontSize:12}} />
+                    <YAxis tick={{fill:P.creamDim,fontSize:10}} />
+                    <Tooltip content={<Tip/>} />
+                    <Legend wrapperStyle={{fontSize:10}} />
+                    <Bar dataKey={`Ricavi ${selYear}`} fill={P.gold} radius={[3,3,0,0]} />
+                    <Bar dataKey={`Ricavi ${cmpYear}`} fill={P.goldDim} radius={[3,3,0,0]} opacity={0.55} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            {/* Quarterly table */}
+            <div style={S.card}>
+              <div style={{ padding:"14px 20px", borderBottom:`1px solid ${P.border}` }}>
+                <div style={{ fontSize:10, letterSpacing:"2px", color:P.creamDim }}>
+                  CONFRONTO TRIMESTRALE — {selYear} vs {cmpYear}
+                </div>
+              </div>
+              <div style={{ padding:"16px 20px" }}>
+                <table style={{ width:"100%", borderCollapse:"collapse" }}>
+                  <thead>
+                    <tr>
+                      {["","Occ "+selYear,"Occ "+cmpYear,"Δ Occ",
+                        "Ricavi "+selYear,"Ricavi "+cmpYear,"Δ Ricavi"].map(h=>(
+                        <th key={h} style={{ textAlign:h===""?"left":"right",
+                          fontSize:10, letterSpacing:"1.5px", color:P.creamDim,
+                          padding:"8px 10px", borderBottom:`1px solid ${P.border}`,
+                          fontWeight:500, textTransform:"uppercase" }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {quarters.map((q,i)=>{
+                      const dOcc = q[`Occ ${selYear}`] - q[`Occ ${cmpYear}`];
+                      const dRev = q[`Ricavi ${cmpYear}`]
+                        ? Math.round(((q[`Ricavi ${selYear}`]-q[`Ricavi ${cmpYear}`])/q[`Ricavi ${cmpYear}`])*100) : 0;
+                      return (
+                        <tr key={i} style={{ borderBottom:`1px solid ${P.border}` }}>
+                          <td style={{ padding:"11px 10px",
+                            fontFamily:"'Cormorant Garamond',serif",
+                            fontSize:18, color:P.gold }}>{q.q}</td>
+                          <td style={{ textAlign:"right", padding:"11px 10px", fontSize:14 }}>
+                            {q[`Occ ${selYear}`]}%
+                          </td>
+                          <td style={{ textAlign:"right", padding:"11px 10px",
+                            fontSize:14, color:P.creamDim }}>
+                            {q[`Occ ${cmpYear}`]}%
+                          </td>
+                          <td style={{ textAlign:"right", padding:"11px 10px", fontSize:12,
+                            color:dOcc>=0?P.green:P.red }}>
+                            {dOcc>=0?"+":""}{dOcc}pp
+                          </td>
+                          <td style={{ textAlign:"right", padding:"11px 10px", fontSize:14 }}>
+                            €{q[`Ricavi ${selYear}`].toLocaleString("it-IT")}
+                          </td>
+                          <td style={{ textAlign:"right", padding:"11px 10px",
+                            fontSize:14, color:P.creamDim }}>
+                            €{q[`Ricavi ${cmpYear}`].toLocaleString("it-IT")}
+                          </td>
+                          <td style={{ textAlign:"right", padding:"11px 10px", fontSize:12,
+                            color:dRev>=0?P.green:P.red }}>
+                            {dRev>=0?"+":""}{dRev}%
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ════════════ MERCATO ════════════ */}
+        {tab==="mercato" && (
+          <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
+            <div style={S.card}>
+              <div style={{ padding:"20px 24px", borderBottom:`1px solid ${P.border}`,
+                display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+                <div>
+                  <div style={{ fontFamily:"'Cormorant Garamond',serif", fontSize:22,
+                    color:P.gold, fontWeight:300, marginBottom:6 }}>
+                    Mercato Affitti Brevi — Trastevere 2025
+                  </div>
+                  <div style={{ fontSize:12, color:P.creamDim, lineHeight:"1.6" }}>
+                    Analisi in tempo reale tramite ricerca web: prezzi, occupancy media,
+                    stagionalità, posizionamento competitivo.
+                  </div>
+                </div>
+                <button onClick={()=>generate("market", marketPrompt, true)}
+                  disabled={loading.market} style={{...S.btn(false), marginLeft:24, whiteSpace:"nowrap"}}>
+                  {loading.market ? "Ricerca in corso…" : "Aggiorna Report"}
+                </button>
+              </div>
+              <div style={{ padding:"24px", minHeight:100 }}>
+                {reports.market
+                  ? <div style={{ fontSize:14, lineHeight:"1.9", whiteSpace:"pre-line" }}>
+                      {reports.market}
+                    </div>
+                  : <div style={{ color:P.creamDim, fontSize:13, lineHeight:"1.9" }}>
+                      Il report analizzerà prezzi medi per notte per un loft di lusso a Trastevere,
+                      tasso di occupazione medio del mercato locale, stagionalità e mesi di picco,
+                      dinamiche competitive su Airbnb e Booking, trend 2025 del mercato romano degli affitti brevi,
+                      e raccomandazioni di pricing e posizionamento per Altiora.
+                    </div>
+                }
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ════════════ OPPORTUNITÀ ════════════ */}
+        {tab==="opportunita" && (
+          <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
+            <div style={S.card}>
+              <div style={{ padding:"20px 24px", borderBottom:`1px solid ${P.border}` }}>
+                <div style={{ fontFamily:"'Cormorant Garamond',serif", fontSize:22,
+                  color:P.gold, fontWeight:300, marginBottom:4 }}>
+                  Valutazione Opportunità Immobiliare
+                </div>
+                <div style={{ fontSize:12, color:P.creamDim }}>
+                  Analisi basata sul framework Altiora: rendimento lordo ≥8%,
+                  superficie netta 85%, benchmark Trastevere e zone limitrofe.
+                </div>
+              </div>
+              <div style={{ padding:"24px" }}>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16, marginBottom:20 }}>
+                  {[
+                    { key:"address", label:"Indirizzo / Zona", placeholder:"es. Via della Lungaretta, Trastevere" },
+                    { key:"price", label:"Prezzo richiesto (€)", placeholder:"es. 380000", type:"number" },
+                    { key:"surface", label:"Superficie totale (mq)", placeholder:"es. 65", type:"number" },
+                    { key:"notes", label:"Note aggiuntive", placeholder:"es. ristrutturato, piano alto, terrazzo…" },
+                  ].map(({ key, label, placeholder, type })=>(
+                    <div key={key}>
+                      <label style={S.label}>{label}</label>
+                      <input type={type||"text"} style={S.input}
+                        value={propInput[key]}
+                        onChange={e=>setPropInput(p=>({...p,[key]:e.target.value}))}
+                        placeholder={placeholder} />
+                    </div>
+                  ))}
+                </div>
+
+                {/* Reference metrics bar */}
+                <div style={{ background:P.goldFaint, border:`1px solid ${P.goldDim}`,
+                  borderRadius:3, padding:"12px 16px", marginBottom:20,
+                  display:"flex", gap:24 }}>
+                  <div style={{ fontSize:10, letterSpacing:"1px", color:P.gold, whiteSpace:"nowrap" }}>
+                    ALTIORA BENCHMARK {selYear}
+                  </div>
+                  {[["ADR",`€${curM.adr}`],["RevPAR",`€${curM.revpar}`],
+                    ["Occ",`${curM.occ}%`],["Ricavi annui",`€${curM.totalRev.toLocaleString("it-IT")}`]].map(([l,v])=>(
+                    <div key={l} style={{ fontSize:12 }}>
+                      <span style={{ color:P.creamDim }}>{l} </span>
+                      <span style={{ color:P.cream, fontWeight:500 }}>{v}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <button onClick={()=>generate("prop", propPrompt)}
+                  disabled={loading.prop || (!propInput.address && !propInput.price)}
+                  style={{ ...S.btn(false), opacity: (loading.prop||(!propInput.address&&!propInput.price)) ? 0.4 : 1 }}>
+                  {loading.prop ? "Analisi in corso…" : "Analizza Investimento"}
+                </button>
+              </div>
+
+              {reports.prop && (
+                <div style={{ borderTop:`1px solid ${P.border}`, padding:"24px" }}>
+                  <div style={{ fontSize:10, letterSpacing:"2px", color:P.creamDim, marginBottom:14 }}>
+                    VALUTAZIONE
+                  </div>
+                  <div style={{ fontSize:14, lineHeight:"1.9", whiteSpace:"pre-line" }}>
+                    {reports.prop}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        <div style={{ marginTop:28, paddingTop:16, borderTop:`1px solid ${P.border}`,
+          fontSize:11, color:P.creamFaint, letterSpacing:"0.5px", lineHeight:"1.7" }}>
+          Dati reali Altiora aggiornati al 15 maggio 2026. 2025: da tab Stats (ufficiale).
+          2026: calcolati da tab Altiora (raw). Mesi giugno–ottobre 2026 = prenotazioni già confermate.
+          Lo script Google Apps Script aggiornerà automaticamente questi dati ogni 1° del mese.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(<AltioraAnalytics/>);
+</script>
+</body>
+</html>
