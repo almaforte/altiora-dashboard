@@ -30,11 +30,10 @@ window.onerror = function(msg, src, line, col, err) {
   document.getElementById('loading').style.display = 'none';
   var e = document.getElementById('error');
   e.style.display = 'block';
-  e.textContent = 'Errore: ' + msg + (err ? '\n' + err.stack : '') + '\nScript: ' + src + ':' + line;
+  e.textContent = 'Errore: ' + msg + (err ? '\n' + err.stack : '') + '\n@ ' + src + ':' + line;
 };
 </script>
 
-<!-- CDN corretti — nomi esatti dei file UMD -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js" crossorigin></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js" crossorigin></script>
 <script src="https://cdn.jsdelivr.net/npm/recharts@2.10.4/umd/Recharts.min.js" crossorigin></script>
@@ -50,10 +49,6 @@ const storage = {
   set: (key, val) => { localStorage.setItem("altiora_"+key, val); return {key,value:val}; },
 };
 
-import {
-  BarChart, Bar, AreaChart, Area,
-  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
-} from "recharts";
 
 const P = {
   bg: "#0c0b09", card: "#141210", border: "#272220",
