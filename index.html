@@ -30,13 +30,15 @@ window.onerror = function(msg, src, line, col, err) {
   document.getElementById('loading').style.display = 'none';
   var e = document.getElementById('error');
   e.style.display = 'block';
-  e.textContent = 'Errore: ' + msg + (err ? '\n' + err.stack : '');
+  e.textContent = 'Errore: ' + msg + (err ? '\n' + err.stack : '') + '\nScript: ' + src + ':' + line;
 };
 </script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.development.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.development.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/recharts@2.10.4/umd/Recharts.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+
+<!-- CDN corretti — nomi esatti dei file UMD -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js" crossorigin></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://cdn.jsdelivr.net/npm/recharts@2.10.4/umd/Recharts.min.js" crossorigin></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js" crossorigin></script>
 
 <script type="text/babel" data-presets="react">
 const { useState, useEffect } = React;
@@ -810,9 +812,9 @@ try {
   root.render(<AltioraAnalytics/>);
 } catch(e) {
   document.getElementById('loading').style.display = 'none';
-  var err = document.getElementById('error');
-  err.style.display = 'block';
-  err.textContent = 'Render error: ' + e.message + '\n' + e.stack;
+  var errDiv = document.getElementById('error');
+  errDiv.style.display = 'block';
+  errDiv.textContent = 'Render error: ' + e.message + '\n' + e.stack;
 }
 </script>
 </body>
