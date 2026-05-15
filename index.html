@@ -24,30 +24,118 @@ textarea{resize:vertical;}
 <div id="loading">ALTIORA · caricamento…</div>
 <div id="error"></div>
 <div id="root"></div>
-
 <script>
-window.onerror = function(msg, src, line, col, err) {
-  document.getElementById('loading').style.display = 'none';
-  var e = document.getElementById('error');
-  e.style.display = 'block';
-  e.textContent = 'Errore: ' + msg + (err ? '\n' + err.stack : '') + '\n@ ' + src + ':' + line;
+window.onerror = function(msg,src,line,col,err){
+  document.getElementById('loading').style.display='none';
+  var e=document.getElementById('error');
+  e.style.display='block';
+  e.textContent='Errore: '+msg+(err?'\n'+err.stack:'')+'\n@ '+src+':'+line;
 };
 </script>
-
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js" crossorigin></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js" crossorigin></script>
-<script src="https://cdn.jsdelivr.net/npm/recharts@2.10.4/umd/Recharts.min.js" crossorigin></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js" crossorigin></script>
-
 <script type="text/babel" data-presets="react">
 const { useState, useEffect } = React;
-const { BarChart, Bar, AreaChart, Area, XAxis, YAxis, CartesianGrid,
-        Tooltip, Legend, ResponsiveContainer } = Recharts;
 
 const storage = {
-  get: (key) => { const v = localStorage.getItem("altiora_"+key); return v ? {value:v} : null; },
-  set: (key, val) => { localStorage.setItem("altiora_"+key, val); return {key,value:val}; },
+  get:(key)=>{ const v=localStorage.getItem("altiora_"+key); return v?{value:v}:null; },
+  set:(key,val)=>{ localStorage.setItem("altiora_"+key,val); return {key,value:val}; },
 };
+
+
+// ── Grafici SVG nativi (zero dipendenze) ──────────────────────────
+
+function SvgBarChart({ data, keys, colors, height=210, yUnit="" }) {
+  const W=580, H=height, PL=40, PR=10, PT=10, PB=24;
+  const vals = data.flatMap(d => keys.map(k => d[k]||0));
+  const maxV = Math.max(...vals, 1);
+  const bw = (W-PL-PR)/data.length;
+  const bGap = 4;
+  const bw2 = (bw - bGap*(keys.length+1)) / keys.length;
+  return (
+    <svg viewBox={"0 0 "+W+" "+H} style={{width:"100%",height}}>
+      {[0,0.25,0.5,0.75,1].map(t=>{
+        const y = PT + (H-PT-PB)*(1-t);
+        const v = Math.round(maxV*t);
+        return <g key={t}>
+          <line x1={PL} x2={W-PR} y1={y} y2={y} stroke="#272220" strokeDasharray="3 3"/>
+          <text x={PL-4} y={y+4} textAnchor="end" fontSize={9} fill="#8a7e68">{yUnit}{v.toLocaleString("it-IT")}</text>
+        </g>;
+      })}
+      {data.map((d,i)=>{
+        const x0 = PL + i*bw + bGap;
+        return <g key={i}>
+          {keys.map((k,ki)=>{
+            const v = d[k]||0;
+            const bh = (H-PT-PB)*(v/maxV);
+            const bx = x0 + ki*(bw2+bGap);
+            const by = PT+(H-PT-PB)-bh;
+            return <rect key={k} x={bx} y={by} width={bw2} height={bh} fill={colors[ki]} opacity={ki===0?1:0.55} rx={2}/>;
+          })}
+          <text x={PL+i*bw+bw/2} y={H-6} textAnchor="middle" fontSize={9} fill="#8a7e68">{d.month||d.q}</text>
+        </g>;
+      })}
+      <line x1={PL} x2={PL} y1={PT} y2={H-PB} stroke="#272220"/>
+    </svg>
+  );
+}
+
+function SvgAreaChart({ data, keys, colors, height=210, yUnit="" }) {
+  const W=580, H=height, PL=40, PR=10, PT=10, PB=24;
+  const vals = data.flatMap(d => keys.map(k => d[k]||0));
+  const maxV = Math.max(...vals, 1);
+  const xStep = (W-PL-PR)/(data.length-1||1);
+  const yScale = v => PT + (H-PT-PB)*(1 - v/maxV);
+  const xPos = i => PL + i*xStep;
+  return (
+    <svg viewBox={"0 0 "+W+" "+H} style={{width:"100%",height}}>
+      <defs>
+        {colors.map((c,ci)=>(
+          <linearGradient key={ci} id={"ag"+ci} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="10%" stopColor={c} stopOpacity={0.25}/>
+            <stop offset="95%" stopColor={c} stopOpacity={0}/>
+          </linearGradient>
+        ))}
+      </defs>
+      {[0,0.25,0.5,0.75,1].map(t=>{
+        const y = PT + (H-PT-PB)*(1-t);
+        const v = Math.round(maxV*t);
+        return <g key={t}>
+          <line x1={PL} x2={W-PR} y1={y} y2={y} stroke="#272220" strokeDasharray="3 3"/>
+          <text x={PL-4} y={y+4} textAnchor="end" fontSize={9} fill="#8a7e68">{yUnit}{v.toLocaleString("it-IT")}</text>
+        </g>;
+      })}
+      {keys.map((k,ki)=>{
+        const pts = data.map((d,i) => [xPos(i), yScale(d[k]||0)]);
+        const linePath = pts.map((p,i) => (i===0?"M":"L")+p[0]+","+p[1]).join(" ");
+        const areaPath = linePath + " L"+xPos(data.length-1)+","+(H-PB)+" L"+PL+","+(H-PB)+" Z";
+        return <g key={k}>
+          {ki===0 && <path d={areaPath} fill={"url(#ag"+ki+")"} />}
+          <path d={linePath} fill="none" stroke={colors[ki]} strokeWidth={ki===0?2:1.5}
+            strokeDasharray={ki===0?"none":"5,4"} opacity={ki===0?1:0.7}/>
+        </g>;
+      })}
+      {data.map((d,i)=>(
+        <text key={i} x={xPos(i)} y={H-6} textAnchor="middle" fontSize={9} fill="#8a7e68">{d.month}</text>
+      ))}
+      <line x1={PL} x2={PL} y1={PT} y2={H-PB} stroke="#272220"/>
+    </svg>
+  );
+}
+
+function ChartLegend({ keys, colors }) {
+  return (
+    <div style={{display:"flex",gap:16,marginTop:8,flexWrap:"wrap"}}>
+      {keys.map((k,i)=>(
+        <div key={k} style={{display:"flex",alignItems:"center",gap:5,fontSize:10,color:"#8a7e68"}}>
+          <div style={{width:12,height:3,background:colors[i],opacity:i===0?1:0.55,borderRadius:1}}/>
+          {k}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 
 const P = {
@@ -147,20 +235,7 @@ const S = {
     color: P.cream, padding: "7px 11px", fontSize: 12, borderRadius: 2 },
 };
 
-function Tip({ active, payload, label }) {
-  if (!active || !payload?.length) return null;
-  return (
-    <div style={{...S.card, padding:"12px 16px", minWidth:160}}>
-      <div style={{color:P.gold,fontSize:11,marginBottom:6,letterSpacing:"1px"}}>{label}</div>
-      {payload.map((p,i)=>(
-        <div key={i} style={{fontSize:12,color:p.color||P.cream,marginBottom:2}}>
-          {p.name}: {p.name.toLowerCase().includes("ricavi")||p.name.toLowerCase().includes("rev")
-            ? `€${Number(p.value).toLocaleString("it-IT")}` : `${p.value}%`}
-        </div>
-      ))}
-    </div>
-  );
-}
+
 
 function AltioraAnalytics() {
   const [tab, setTab] = useState("mensile");
@@ -475,17 +550,8 @@ Scrivi una valutazione di investimento in italiano di circa 200 parole. Include:
                 <div style={{ fontSize:10, letterSpacing:"2px", color:P.creamDim, marginBottom:14 }}>
                   OCCUPANCY MENSILE — {selYear} vs {cmpYear}
                 </div>
-                <ResponsiveContainer width="100%" height={210}>
-                  <BarChart data={monthChart} margin={{top:0,right:0,left:-22,bottom:0}}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={P.border} />
-                    <XAxis dataKey="month" tick={{fill:P.creamDim,fontSize:10}} />
-                    <YAxis tick={{fill:P.creamDim,fontSize:10}} domain={[0,100]} unit="%" />
-                    <Tooltip content={<Tip/>} />
-                    <Legend wrapperStyle={{fontSize:10,color:P.creamDim}} />
-                    <Bar dataKey={`Occ ${selYear}`} fill={P.gold} radius={[2,2,0,0]} />
-                    <Bar dataKey={`Occ ${cmpYear}`} fill={P.goldDim} radius={[2,2,0,0]} opacity={0.55} />
-                  </BarChart>
-                </ResponsiveContainer>
+                <SvgBarChart data={monthChart} keys={[`Occ ${selYear}`,`Occ ${cmpYear}`]} colors={[P.gold,P.goldDim]} yUnit="" height={210}/>
+                <ChartLegend keys={[`Occ ${selYear}`,`Occ ${cmpYear}`]} colors={[P.gold,P.goldDim]}/>
               </div>
 
               {/* Ricavi */}
@@ -493,23 +559,8 @@ Scrivi una valutazione di investimento in italiano di circa 200 parole. Include:
                 <div style={{ fontSize:10, letterSpacing:"2px", color:P.creamDim, marginBottom:14 }}>
                   RICAVI ALTIORA MENSILI — {selYear} vs {cmpYear}
                 </div>
-                <ResponsiveContainer width="100%" height={210}>
-                  <AreaChart data={monthChart} margin={{top:0,right:0,left:-10,bottom:0}}>
-                    <defs>
-                      <linearGradient id="ga" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="10%" stopColor={P.gold} stopOpacity={0.28}/>
-                        <stop offset="95%" stopColor={P.gold} stopOpacity={0}/>
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke={P.border} />
-                    <XAxis dataKey="month" tick={{fill:P.creamDim,fontSize:10}} />
-                    <YAxis tick={{fill:P.creamDim,fontSize:10}} />
-                    <Tooltip content={<Tip/>} />
-                    <Legend wrapperStyle={{fontSize:10}} />
-                    <Area type="monotone" dataKey={`Ricavi ${selYear}`} stroke={P.gold} fill="url(#ga)" strokeWidth={2} />
-                    <Area type="monotone" dataKey={`Ricavi ${cmpYear}`} stroke={P.goldDim} fill="none" strokeWidth={1.5} strokeDasharray="5 4" />
-                  </AreaChart>
-                </ResponsiveContainer>
+                <SvgAreaChart data={monthChart} keys={[`Ricavi ${selYear}`,`Ricavi ${cmpYear}`]} colors={[P.gold,P.goldDim]} height={210}/>
+                <ChartLegend keys={[`Ricavi ${selYear}`,`Ricavi ${cmpYear}`]} colors={[P.gold,P.goldDim]}/>
               </div>
 
               {/* AMF mensile */}
@@ -517,23 +568,8 @@ Scrivi una valutazione di investimento in italiano di circa 200 parole. Include:
                 <div style={{ fontSize:10, letterSpacing:"2px", color:P.creamDim, marginBottom:14 }}>
                   NETTO AMF MENSILE — {selYear} vs {cmpYear}
                 </div>
-                <ResponsiveContainer width="100%" height={210}>
-                  <AreaChart data={monthChart} margin={{top:0,right:0,left:-10,bottom:0}}>
-                    <defs>
-                      <linearGradient id="gb" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="10%" stopColor={P.green} stopOpacity={0.22}/>
-                        <stop offset="95%" stopColor={P.green} stopOpacity={0}/>
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke={P.border} />
-                    <XAxis dataKey="month" tick={{fill:P.creamDim,fontSize:10}} />
-                    <YAxis tick={{fill:P.creamDim,fontSize:10}} />
-                    <Tooltip content={<Tip/>} />
-                    <Legend wrapperStyle={{fontSize:10}} />
-                    <Area type="monotone" dataKey={`AMF ${selYear}`} stroke={P.green} fill="url(#gb)" strokeWidth={2} />
-                    <Area type="monotone" dataKey={`AMF ${cmpYear}`} stroke="#4a8a6a" fill="none" strokeWidth={1.5} strokeDasharray="5 4" />
-                  </AreaChart>
-                </ResponsiveContainer>
+                <SvgAreaChart data={monthChart} keys={[`AMF ${selYear}`,`AMF ${cmpYear}`]} colors={[P.green,"#4a8a6a"]} height={210}/>
+                <ChartLegend keys={[`AMF ${selYear}`,`AMF ${cmpYear}`]} colors={[P.green,"#4a8a6a"]}/>
               </div>
 
               {/* Vania mensile */}
@@ -541,17 +577,8 @@ Scrivi una valutazione di investimento in italiano di circa 200 parole. Include:
                 <div style={{ fontSize:10, letterSpacing:"2px", color:P.creamDim, marginBottom:14 }}>
                   RICAVI VANIA MENSILI — {selYear} vs {cmpYear}
                 </div>
-                <ResponsiveContainer width="100%" height={210}>
-                  <BarChart data={monthChart} margin={{top:0,right:0,left:-22,bottom:0}}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={P.border} />
-                    <XAxis dataKey="month" tick={{fill:P.creamDim,fontSize:10}} />
-                    <YAxis tick={{fill:P.creamDim,fontSize:10}} />
-                    <Tooltip content={<Tip/>} />
-                    <Legend wrapperStyle={{fontSize:10}} />
-                    <Bar dataKey={`Vania ${selYear}`} fill="#9a7ac9" radius={[2,2,0,0]} />
-                    <Bar dataKey={`Vania ${cmpYear}`} fill="#6a4a99" radius={[2,2,0,0]} opacity={0.55} />
-                  </BarChart>
-                </ResponsiveContainer>
+                <SvgBarChart data={monthChart} keys={[`Vania ${selYear}`,`Vania ${cmpYear}`]} colors={["#9a7ac9","#6a4a99"]} height={210}/>
+                <ChartLegend keys={[`Vania ${selYear}`,`Vania ${cmpYear}`]} colors={["#9a7ac9","#6a4a99"]}/>
               </div>
             </div>
 
@@ -590,33 +617,15 @@ Scrivi una valutazione di investimento in italiano di circa 200 parole. Include:
                 <div style={{ fontSize:10, letterSpacing:"2px", color:P.creamDim, marginBottom:14 }}>
                   OCCUPANCY PER TRIMESTRE
                 </div>
-                <ResponsiveContainer width="100%" height={230}>
-                  <BarChart data={quarters} margin={{top:0,right:0,left:-22,bottom:0}}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={P.border} />
-                    <XAxis dataKey="q" tick={{fill:P.creamDim,fontSize:12}} />
-                    <YAxis tick={{fill:P.creamDim,fontSize:10}} unit="%" domain={[0,100]} />
-                    <Tooltip content={<Tip/>} />
-                    <Legend wrapperStyle={{fontSize:10}} />
-                    <Bar dataKey={`Occ ${selYear}`} fill={P.gold} radius={[3,3,0,0]} />
-                    <Bar dataKey={`Occ ${cmpYear}`} fill={P.goldDim} radius={[3,3,0,0]} opacity={0.55} />
-                  </BarChart>
-                </ResponsiveContainer>
+                <SvgBarChart data={quarters} keys={[`Occ ${selYear}`,`Occ ${cmpYear}`]} colors={[P.gold,P.goldDim]} height={230}/>
+                <ChartLegend keys={[`Occ ${selYear}`,`Occ ${cmpYear}`]} colors={[P.gold,P.goldDim]}/>
               </div>
               <div style={{...S.card, padding:"20px 16px 16px"}}>
                 <div style={{ fontSize:10, letterSpacing:"2px", color:P.creamDim, marginBottom:14 }}>
                   RICAVI PER TRIMESTRE
                 </div>
-                <ResponsiveContainer width="100%" height={230}>
-                  <BarChart data={quarters} margin={{top:0,right:0,left:-10,bottom:0}}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={P.border} />
-                    <XAxis dataKey="q" tick={{fill:P.creamDim,fontSize:12}} />
-                    <YAxis tick={{fill:P.creamDim,fontSize:10}} />
-                    <Tooltip content={<Tip/>} />
-                    <Legend wrapperStyle={{fontSize:10}} />
-                    <Bar dataKey={`Ricavi ${selYear}`} fill={P.gold} radius={[3,3,0,0]} />
-                    <Bar dataKey={`Ricavi ${cmpYear}`} fill={P.goldDim} radius={[3,3,0,0]} opacity={0.55} />
-                  </BarChart>
-                </ResponsiveContainer>
+                <SvgBarChart data={quarters} keys={[`Ricavi ${selYear}`,`Ricavi ${cmpYear}`]} colors={[P.gold,P.goldDim]} height={230}/>
+                <ChartLegend keys={[`Ricavi ${selYear}`,`Ricavi ${cmpYear}`]} colors={[P.gold,P.goldDim]}/>
               </div>
             </div>
 
@@ -802,14 +811,14 @@ Scrivi una valutazione di investimento in italiano di circa 200 parole. Include:
 
 
 try {
-  document.getElementById('loading').style.display = 'none';
-  const root = ReactDOM.createRoot(document.getElementById("root"));
+  document.getElementById('loading').style.display='none';
+  const root=ReactDOM.createRoot(document.getElementById("root"));
   root.render(<AltioraAnalytics/>);
 } catch(e) {
-  document.getElementById('loading').style.display = 'none';
-  var errDiv = document.getElementById('error');
-  errDiv.style.display = 'block';
-  errDiv.textContent = 'Render error: ' + e.message + '\n' + e.stack;
+  document.getElementById('loading').style.display='none';
+  var ed=document.getElementById('error');
+  ed.style.display='block';
+  ed.textContent='Render error: '+e.message+'\n'+e.stack;
 }
 </script>
 </body>
